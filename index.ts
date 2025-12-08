@@ -331,7 +331,7 @@ export function compile(type: ts.Type, typeChecker: ts.TypeChecker): JSONSchema 
       // A property is optional if it has the Optional flag or if its type includes undefined
       const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0 ||
                         (propType.flags & ts.TypeFlags.Undefined) !== 0 ||
-                        (propType.isUnion && propType.isUnion() && 
+                        (propType.isUnion() && 
                          propType.types.some(t => t.flags & ts.TypeFlags.Undefined));
       
       if (!isOptional) {
