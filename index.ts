@@ -81,6 +81,32 @@ function getDescription(symbol: ts.Symbol | undefined, typeChecker: ts.TypeCheck
 }
 
 /**
+ * Parse a float value from a JSDoc tag
+ */
+function parseFloatTag(tags: Map<string, string>, tagName: string): number | undefined {
+  if (tags.has(tagName)) {
+    const value = parseFloat(tags.get(tagName)!);
+    if (!isNaN(value)) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Parse an integer value from a JSDoc tag
+ */
+function parseIntTag(tags: Map<string, string>, tagName: string): number | undefined {
+  if (tags.has(tagName)) {
+    const value = parseInt(tags.get(tagName)!, 10);
+    if (!isNaN(value)) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Apply JSDoc tags to JSON Schema
  */
 function applyJSDocTags(schema: JSONSchema, tags: Map<string, string>, description?: string): void {
@@ -89,25 +115,19 @@ function applyJSDocTags(schema: JSONSchema, tags: Map<string, string>, descripti
   }
   
   // Number validations
-  if (tags.has('minimum')) {
-    const value = parseFloat(tags.get('minimum')!);
-    if (!isNaN(value)) {
-      schema.minimum = value;
-    }
+  const minimum = parseFloatTag(tags, 'minimum');
+  if (minimum !== undefined) {
+    schema.minimum = minimum;
   }
   
-  if (tags.has('maximum')) {
-    const value = parseFloat(tags.get('maximum')!);
-    if (!isNaN(value)) {
-      schema.maximum = value;
-    }
+  const maximum = parseFloatTag(tags, 'maximum');
+  if (maximum !== undefined) {
+    schema.maximum = maximum;
   }
   
-  if (tags.has('multipleOf')) {
-    const value = parseFloat(tags.get('multipleOf')!);
-    if (!isNaN(value)) {
-      schema.multipleOf = value;
-    }
+  const multipleOf = parseFloatTag(tags, 'multipleOf');
+  if (multipleOf !== undefined) {
+    schema.multipleOf = multipleOf;
   }
   
   if (tags.has('integer')) {
@@ -115,18 +135,14 @@ function applyJSDocTags(schema: JSONSchema, tags: Map<string, string>, descripti
   }
   
   // String validations
-  if (tags.has('minLength')) {
-    const value = parseInt(tags.get('minLength')!, 10);
-    if (!isNaN(value)) {
-      schema.minLength = value;
-    }
+  const minLength = parseIntTag(tags, 'minLength');
+  if (minLength !== undefined) {
+    schema.minLength = minLength;
   }
   
-  if (tags.has('maxLength')) {
-    const value = parseInt(tags.get('maxLength')!, 10);
-    if (!isNaN(value)) {
-      schema.maxLength = value;
-    }
+  const maxLength = parseIntTag(tags, 'maxLength');
+  if (maxLength !== undefined) {
+    schema.maxLength = maxLength;
   }
   
   if (tags.has('pattern')) {
@@ -138,18 +154,14 @@ function applyJSDocTags(schema: JSONSchema, tags: Map<string, string>, descripti
   }
   
   // Array validations
-  if (tags.has('minItems')) {
-    const value = parseInt(tags.get('minItems')!, 10);
-    if (!isNaN(value)) {
-      schema.minItems = value;
-    }
+  const minItems = parseIntTag(tags, 'minItems');
+  if (minItems !== undefined) {
+    schema.minItems = minItems;
   }
   
-  if (tags.has('maxItems')) {
-    const value = parseInt(tags.get('maxItems')!, 10);
-    if (!isNaN(value)) {
-      schema.maxItems = value;
-    }
+  const maxItems = parseIntTag(tags, 'maxItems');
+  if (maxItems !== undefined) {
+    schema.maxItems = maxItems;
   }
   
   // Default value
@@ -287,8 +299,10 @@ export function compile(type: ts.Type, typeChecker: ts.TypeChecker): JSONSchema 
   if (typeChecker.isArrayType(type)) {
     schema.type = 'array';
     
-    const typeArguments = (type as any).typeArguments || (type as any).resolvedTypeArguments;
-    if (typeArguments && typeArguments.length > 0) {
+    // Try to get array element type from typeArguments
+    const typeWithArgs = type as any;
+    const typeArguments = typeWithArgs.typeArguments || typeWithArgs.resolvedTypeArguments;
+    if (Array.isArray(typeArguments) && typeArguments.length > 0) {
       schema.items = compile(typeArguments[0], typeChecker);
     }
     
@@ -314,7 +328,11 @@ export function compile(type: ts.Type, typeChecker: ts.TypeChecker): JSONSchema 
       const propType = typeChecker.getTypeOfSymbol(prop);
       
       // Check if property is optional
-      const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
+      // A property is optional if it has the Optional flag or if its type includes undefined
+      const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0 ||
+                        (propType.flags & ts.TypeFlags.Undefined) !== 0 ||
+                        (propType.isUnion && propType.isUnion() && 
+                         propType.types.some(t => t.flags & ts.TypeFlags.Undefined));
       
       if (!isOptional) {
         required.push(propName);
