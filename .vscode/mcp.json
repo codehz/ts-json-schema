@@ -1,11 +1,20 @@
 {
-  "servers": {
-    "bun": {
-      "command": "bunx",
-      "args": ["-y", "mcp-bun"],
-      "env": {
-        "DISABLE_NOTIFICATIONS": "true"
-      }
-    }
-  }
+	"servers": {
+		"bun": {
+			"command": "bunx",
+			"args": [
+				"-y",
+				"mcp-bun"
+			],
+			"env": {
+				"DISABLE_NOTIFICATIONS": "true"
+			},
+			"type": "stdio"
+		},
+		"bun-docs": {
+			"url": "https://bun.com/docs/mcp",
+			"type": "http"
+		}
+	},
+	"inputs": []
 }
