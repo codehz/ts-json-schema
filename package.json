@@ -1,6 +1,6 @@
 {
   "name": "@codehz/ts-json-schema",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "将 TypeScript 类型转换为 JSON Schema 的简单工具（基于 TypeScript Compiler API）",
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
