@@ -40,4 +40,7 @@ export interface JSONSchema {
   oneOf?: JSONSchema[];
   allOf?: JSONSchema[];
   not?: JSONSchema;
+
+  // Allow arbitrary extensions (e.g., x- prefixed custom properties)
+  [key: `x-${string}`]: any;
 }

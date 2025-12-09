@@ -117,6 +117,8 @@ ts.forEachChild(sourceFile, node => {
 
 说明：标签值是从 JSDoc 标签字符串中提取的，如果存在 `@default` 会尝试 `JSON.parse`，解析失败则作为字符串保留。
 
+未知的 JSDoc 标签会被转换为 `x-{tagName}` 的自定义扩展属性。例如，`@customTag value` 会生成 `"x-customTag": "value"`。
+
 ---
 
 ## 支持/限制

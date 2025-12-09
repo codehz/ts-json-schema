@@ -138,4 +138,18 @@ export function applyJSDocTags(schema: JSONSchema, tags: Map<string, string>, de
       schema.default = defaultValue;
     }
   }
+
+  // Known tags set
+  const knownTags = new Set(['minimum', 'maximum', 'multipleOf', 'integer', 'minLength', 'maxLength', 'pattern', 'format', 'minItems', 'maxItems', 'default']);
+
+  // Apply unknown tags as x- extensions
+  for (const [tagName, tagText] of tags) {
+    if (!knownTags.has(tagName)) {
+      try {
+        schema[`x-${tagName}`] = JSON.parse(tagText);
+      } catch {
+        schema[`x-${tagName}`] = tagText;
+      }
+    }
+  }
 }
