@@ -171,10 +171,18 @@ export function compile(
         required.push(propName);
       }
 
+      // Check for ignore tag
+      const propTags = extractJSDocTags(prop, typeChecker);
+      if (propTags.has('ignore')) {
+        if (!isOptional) {
+          throw new Error(`Cannot ignore required property: ${propName}`);
+        }
+        continue;
+      }
+
       schema.properties[propName] = compile(propType, typeChecker);
 
       // Apply JSDoc tags to property
-      const propTags = extractJSDocTags(prop, typeChecker);
       const propDescription = getDescription(prop, typeChecker);
       applyJSDocTags(schema.properties[propName], propTags, propDescription);
     }

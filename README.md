@@ -52,6 +52,12 @@ interface Person {
   /** @default true */
   isActive: boolean;
 
+  /**
+   * 内部使用，不输出到 schema
+   * @ignore
+   */
+  internalId?: string;
+
   tags: string[];
 
   status: 'active' | 'banned';
@@ -130,6 +136,7 @@ ts.forEachChild(sourceFile, (node) => {
 - `@minItems`, `@maxItems`（数组验证）
 - `@default`（默认值，如果是合法 JSON 值会尝试解析）
 - `@integer`（将类型标记为 `integer`）
+- `@ignore`（忽略属性：可选属性会被跳过，必选属性会报错）
 
 说明：标签值是从 JSDoc 标签字符串中提取的，如果存在 `@default` 会尝试 `JSON.parse`，解析失败则作为字符串保留。
 

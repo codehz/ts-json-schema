@@ -159,6 +159,39 @@ describe('ts-json-schema', () => {
         required: ['name'],
       });
     });
+
+    it('should ignore optional property with @ignore tag', () => {
+      const { typeChecker, type } = createProgramAndTypeChecker(`
+        interface Person {
+          name: string;
+          /** @ignore */
+          age?: number;
+        }
+        type T = Person;
+      `);
+      const schema = compile(type, typeChecker);
+      expect(schema).toEqual({
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+        },
+        required: ['name'],
+      });
+    });
+
+    it('should throw error for required property with @ignore tag', () => {
+      const { typeChecker, type } = createProgramAndTypeChecker(`
+        interface Person {
+          name: string;
+          /** @ignore */
+          age: number;
+        }
+        type T = Person;
+      `);
+      expect(() => compile(type, typeChecker)).toThrow(
+        'Cannot ignore required property: age'
+      );
+    });
   });
 
   describe('JSDoc tags', () => {
