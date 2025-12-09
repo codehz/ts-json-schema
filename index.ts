@@ -1,2 +1,2 @@
-export type { JSONSchema } from "./types";
-export { compile } from "./compiler";
+export type { JSONSchema } from './types';
+export { compile } from './compiler';

@@ -1,4 +1,4 @@
-import { defineConfig } from 'tsdown'
+import { defineConfig } from 'tsdown';
 
 export default defineConfig({
   entry: 'index.ts',
@@ -8,4 +8,4 @@ export default defineConfig({
   platform: 'node',
   sourcemap: true,
   tsconfig: 'tsconfig.build.json',
-})
+});
