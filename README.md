@@ -5,6 +5,7 @@
 ---
 
 ## 特性
+
 - 将基本 TypeScript 类型（string/number/boolean/null/array/object）转换为 JSON Schema。
 - 支持字面量类型 & 字面量联合（转换为 `enum`）。
 - 支持数组元素类型推断（`Array<T>` / `T[]`）。
@@ -14,9 +15,11 @@
 ---
 
 ## 安装
+
 > 本项目将 `typescript` 作为 `peerDependency`，请确保在项目中安装 `typescript`（推荐 v5 及以上）。
 
 使用 bun:
+
 ```bash
 bun add -D typescript @codehz/ts-json-schema
 ```
@@ -51,7 +54,7 @@ interface Person {
 
   tags: string[];
 
-  status: "active" | "banned";
+  status: 'active' | 'banned';
 }
 ```
 
@@ -71,7 +74,7 @@ const program = ts.createProgram(['./example.ts'], {
 const checker = program.getTypeChecker();
 const sourceFile = program.getSourceFile('./example.ts')!;
 
-ts.forEachChild(sourceFile, node => {
+ts.forEachChild(sourceFile, (node) => {
   if (ts.isInterfaceDeclaration(node) && node.name.text === 'Person') {
     const type = checker.getTypeAtLocation(node);
     const schema = compile(type, checker);
@@ -81,17 +84,28 @@ ts.forEachChild(sourceFile, node => {
 ```
 
 输出（示例）：
+
 ```json
 {
   "type": "object",
   "properties": {
-    "name": { "type": "string", "minLength": 2, "maxLength": 50, "description": "用户名" },
-    "age": { "type": "number", "minimum": 0, "maximum": 120, "description": "年龄（可选）" },
+    "name": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 50,
+      "description": "用户名"
+    },
+    "age": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 120,
+      "description": "年龄（可选）"
+    },
     "isActive": { "type": "boolean", "default": true },
-    "tags": { "type": "array", "items": {"type": "string"} },
-    "status": { "enum": ["active","banned"] }
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "status": { "enum": ["active", "banned"] }
   },
-  "required": ["name","isActive","tags","status"]
+  "required": ["name", "isActive", "tags", "status"]
 }
 ```
 
@@ -104,11 +118,13 @@ ts.forEachChild(sourceFile, node => {
   - `typeChecker` 是从 `ts.Program` 中获取到的 `TypeChecker` 实例。
 
 ### `JSONSchema`（导出类型）
+
 该接口在 `index.ts` 中定义，包含常见 JSON Schema 字段，如 `type, description, enum, const, properties, items, minLength, maxLength, minimum, maximum` 等。
 
 ---
 
 ## 支持的 JSDoc 标签（可用于类型或属性）
+
 - `@minimum`, `@maximum`, `@multipleOf`（数字验证）
 - `@minLength`, `@maxLength`, `@pattern`, `@format`（字符串验证）
 - `@minItems`, `@maxItems`（数组验证）
@@ -124,12 +140,14 @@ ts.forEachChild(sourceFile, node => {
 ## 支持/限制
 
 支持：
+
 - 基本类型（string, number, boolean, null）
 - 字面量类型（string/number/boolean literals）与字面量联合（转换为 `enum`）
 - 对象（`properties`, `required`）、数组与元素类型
 - 从 JSDoc 提取额外约束
 
 限制（当前未支持或有限支持的项）：
+
 - 交叉类型（intersection）不支持，会抛出错误
 - 复杂联合类型（包含非字面量的 union）不支持，会抛出错误
 - 元组类型不支持，会抛出错误
@@ -148,5 +166,5 @@ ts.forEachChild(sourceFile, node => {
 ---
 
 ## 贡献
-欢迎 PR 与 issue。如果想扩展对更多 TypeScript 特性的支持（例如交叉/元组/泛型），请在 PR 中包含示例输入和期望输出。
 
+欢迎 PR 与 issue。如果想扩展对更多 TypeScript 特性的支持（例如交叉/元组/泛型），请在 PR 中包含示例输入和期望输出。
