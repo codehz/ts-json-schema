@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "bun": {
+      "command": "bunx",
+      "args": ["-y", "mcp-bun"],
+      "env": {
+        "DISABLE_NOTIFICATIONS": "true"
+      }
+    }
+  }
+}
