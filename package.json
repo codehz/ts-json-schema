@@ -1,11 +1,60 @@
 {
   "name": "@codehz/ts-json-schema",
-  "module": "index.ts",
+  "version": "0.0.1",
+  "description": "将 TypeScript 类型转换为 JSON Schema 的简单工具（基于 TypeScript Compiler API）",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.mts",
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "typescript",
+    "json-schema",
+    "typescript-compiler-api",
+    "schema",
+    "ts-json-schema"
+  ],
+  "scripts": {
+    "typecheck": "bunx tsc --noEmit",
+    "build": "bunx tsdown -c tsdown.config.ts",
+    "prepare": "bunx tsdown -c tsdown.config.ts",
+    "test": "echo \"No tests specified\" && exit 0",
+    "lint": "echo \"No linter configured\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codehz/ts-json-schema.git"
+  },
+  "bugs": {
+    "url": "https://github.com/codehz/ts-json-schema/issues"
+  },
+  "homepage": "https://github.com/codehz/ts-json-schema#readme",
+  "author": "codehz",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "typescript": "^5",
+    "tsdown": "^0.17.2"
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.mts"
+    }
   }
 }
