@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test';
 import ts from 'typescript';
-import { compile } from '../index';
+import { compile } from '../src/index';
 
 function createProgramAndTypeChecker(code: string): {
   program: ts.Program;
