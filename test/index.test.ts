@@ -181,5 +181,29 @@ describe("ts-json-schema", () => {
       const schema = compile(type, typeChecker);
       expect(schema.properties?.prop?.minLength).toBe(5);
     });
+
+    it("should not apply minimum tag to string type", () => {
+      const { typeChecker, type } = createProgramAndTypeChecker(`
+        interface Test {
+          /** @minimum 10 */
+          prop: string;
+        }
+        type T = Test;
+      `);
+      const schema = compile(type, typeChecker);
+      expect(schema.properties?.prop).toEqual({ type: "string" });
+    });
+
+    it("should not apply minLength tag to number type", () => {
+      const { typeChecker, type } = createProgramAndTypeChecker(`
+        interface Test {
+          /** @minLength 5 */
+          prop: number;
+        }
+        type T = Test;
+      `);
+      const schema = compile(type, typeChecker);
+      expect(schema.properties?.prop).toEqual({ type: "number" });
+    });
   });
 });

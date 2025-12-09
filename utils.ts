@@ -74,53 +74,59 @@ export function applyJSDocTags(schema: JSONSchema, tags: Map<string, string>, de
   }
   
   // Number validations
-  const minimum = parseFloatTag(tags, 'minimum');
-  if (minimum !== undefined) {
-    schema.minimum = minimum;
-  }
-  
-  const maximum = parseFloatTag(tags, 'maximum');
-  if (maximum !== undefined) {
-    schema.maximum = maximum;
-  }
-  
-  const multipleOf = parseFloatTag(tags, 'multipleOf');
-  if (multipleOf !== undefined) {
-    schema.multipleOf = multipleOf;
-  }
-  
-  if (tags.has('integer')) {
-    schema.type = 'integer';
+  if (schema.type === "number" || schema.type === "integer") {
+    const minimum = parseFloatTag(tags, 'minimum');
+    if (minimum !== undefined) {
+      schema.minimum = minimum;
+    }
+    
+    const maximum = parseFloatTag(tags, 'maximum');
+    if (maximum !== undefined) {
+      schema.maximum = maximum;
+    }
+    
+    const multipleOf = parseFloatTag(tags, 'multipleOf');
+    if (multipleOf !== undefined) {
+      schema.multipleOf = multipleOf;
+    }
+    
+    if (tags.has('integer')) {
+      schema.type = 'integer';
+    }
   }
   
   // String validations
-  const minLength = parseIntTag(tags, 'minLength');
-  if (minLength !== undefined) {
-    schema.minLength = minLength;
-  }
-  
-  const maxLength = parseIntTag(tags, 'maxLength');
-  if (maxLength !== undefined) {
-    schema.maxLength = maxLength;
-  }
-  
-  if (tags.has('pattern')) {
-    schema.pattern = tags.get('pattern');
-  }
-  
-  if (tags.has('format')) {
-    schema.format = tags.get('format');
+  if (schema.type === "string") {
+    const minLength = parseIntTag(tags, 'minLength');
+    if (minLength !== undefined) {
+      schema.minLength = minLength;
+    }
+    
+    const maxLength = parseIntTag(tags, 'maxLength');
+    if (maxLength !== undefined) {
+      schema.maxLength = maxLength;
+    }
+    
+    if (tags.has('pattern')) {
+      schema.pattern = tags.get('pattern');
+    }
+    
+    if (tags.has('format')) {
+      schema.format = tags.get('format');
+    }
   }
   
   // Array validations
-  const minItems = parseIntTag(tags, 'minItems');
-  if (minItems !== undefined) {
-    schema.minItems = minItems;
-  }
-  
-  const maxItems = parseIntTag(tags, 'maxItems');
-  if (maxItems !== undefined) {
-    schema.maxItems = maxItems;
+  if (schema.type === "array") {
+    const minItems = parseIntTag(tags, 'minItems');
+    if (minItems !== undefined) {
+      schema.minItems = minItems;
+    }
+    
+    const maxItems = parseIntTag(tags, 'maxItems');
+    if (maxItems !== undefined) {
+      schema.maxItems = maxItems;
+    }
   }
   
   // Default value
