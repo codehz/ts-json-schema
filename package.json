@@ -25,6 +25,7 @@
   "scripts": {
     "typecheck": "bunx tsc --noEmit",
     "build": "bunx tsdown -c tsdown.config.ts",
+    "release": "bun run build",
     "prepare": "bunx tsdown -c tsdown.config.ts",
     "test": "bun test",
     "lint": "eslint . --ext .ts,.js",
