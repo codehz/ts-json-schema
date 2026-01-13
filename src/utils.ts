@@ -78,6 +78,13 @@ export function parseIntTag(
 }
 
 /**
+ * Convert camelCase to kebab-case
+ */
+function camelToKebab(str: string): string {
+  return str.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+}
+
+/**
  * Apply JSDoc tags to JSON Schema
  */
 export function applyJSDocTags(
@@ -173,10 +180,11 @@ export function applyJSDocTags(
   // Apply unknown tags as x- extensions
   for (const [tagName, tagText] of tags) {
     if (!knownTags.has(tagName)) {
+      const kebabTagName = camelToKebab(tagName);
       try {
-        schema[`x-${tagName}`] = JSON.parse(tagText);
+        schema[`x-${kebabTagName}`] = JSON.parse(tagText);
       } catch {
-        schema[`x-${tagName}`] = tagText;
+        schema[`x-${kebabTagName}`] = tagText;
       }
     }
   }
