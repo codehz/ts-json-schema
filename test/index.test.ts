@@ -266,7 +266,7 @@ describe('ts-json-schema', () => {
       const schema = compile(type, typeChecker);
       expect(schema.properties?.prop).toEqual({
         type: 'string',
-        'x-customTag': 'value',
+        'x-custom-tag': 'value',
       });
     });
   });
