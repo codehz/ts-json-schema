@@ -133,7 +133,13 @@ export function compile(
 
     // Try to get array element type from typeArguments
     const typeRef = type as ts.TypeReference;
-    const typeArguments = typeRef.typeArguments || (typeRef as ts.TypeReference & { resolvedTypeArguments?: readonly ts.Type[] }).resolvedTypeArguments;
+    const typeArguments =
+      typeRef.typeArguments ||
+      (
+        typeRef as ts.TypeReference & {
+          resolvedTypeArguments?: readonly ts.Type[];
+        }
+      ).resolvedTypeArguments;
     if (Array.isArray(typeArguments) && typeArguments.length > 0) {
       schema.items = compile(typeArguments[0], typeChecker);
     }
