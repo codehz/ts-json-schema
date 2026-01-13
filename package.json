@@ -25,7 +25,8 @@
   "scripts": {
     "typecheck": "bunx tsc --noEmit",
     "build": "bunx tsdown -c tsdown.config.ts",
-    "prepare": "husky",
+    "prepack": "bun run build",
+    "prepare": "bunx husky || exit 0",
     "test": "bun test",
     "lint": "eslint . --ext .ts,.js",
     "lint:fix": "eslint . --ext .ts,.js --fix",
