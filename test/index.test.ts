@@ -194,6 +194,51 @@ describe('ts-json-schema', () => {
     });
   });
 
+  describe('intersection types', () => {
+    it('should merge two object types', () => {
+      const { typeChecker, type } = createProgramAndTypeChecker(`
+        interface A { name: string; }
+        interface B { age: number; }
+        type T = A & B;
+      `);
+      const schema = compile(type, typeChecker);
+      expect(schema).toEqual({
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          age: { type: 'number' },
+        },
+        required: ['name', 'age'],
+      });
+    });
+
+    it('should merge object with optional properties', () => {
+      const { typeChecker, type } = createProgramAndTypeChecker(`
+        interface A { name: string; }
+        interface B { age?: number; }
+        type T = A & B;
+      `);
+      const schema = compile(type, typeChecker);
+      expect(schema).toEqual({
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          age: { type: 'number' },
+        },
+        required: ['name'],
+      });
+    });
+
+    it('should use allOf for mixed intersections', () => {
+      const { typeChecker, type } = createProgramAndTypeChecker(`
+        type T = { name: string } & string[];
+      `);
+      const schema = compile(type, typeChecker);
+      expect(schema.allOf).toBeDefined();
+      expect(schema.allOf).toHaveLength(2);
+    });
+  });
+
   describe('JSDoc tags', () => {
     it('should apply description from JSDoc', () => {
       const { typeChecker, type } = createProgramAndTypeChecker(`

@@ -201,9 +201,62 @@ export function compile(
     return schema;
   }
 
-  // Handle intersection types (not supported)
+  // Handle intersection types using allOf
   if (type.isIntersection()) {
-    throw new Error('Intersection types are not supported.');
+    // If all constituent types are plain objects, merge them into a single object schema
+    const allObjects = type.types.every(
+      (t) =>
+        t.flags & ts.TypeFlags.Object &&
+        !typeChecker.isArrayType(t) &&
+        !typeChecker.isTupleType(t)
+    );
+
+    if (allObjects) {
+      schema.type = 'object';
+      schema.properties = {};
+      const required: string[] = [];
+
+      const properties = typeChecker.getPropertiesOfType(type);
+      for (const prop of properties) {
+        const propName = prop.getName();
+        const propType = typeChecker.getTypeOfSymbol(prop);
+
+        const isOptional =
+          (prop.flags & ts.SymbolFlags.Optional) !== 0 ||
+          (propType.flags & ts.TypeFlags.Undefined) !== 0 ||
+          (propType.isUnion() &&
+            propType.types.some((t) => t.flags & ts.TypeFlags.Undefined));
+
+        if (!isOptional) {
+          required.push(propName);
+        }
+
+        const propTags = extractJSDocTags(prop, typeChecker);
+        if (propTags.has('ignore')) {
+          if (!isOptional) {
+            throw new Error(`Cannot ignore required property: ${propName}`);
+          }
+          continue;
+        }
+
+        schema.properties[propName] = compile(propType, typeChecker);
+
+        const propDescription = getDescription(prop, typeChecker);
+        applyJSDocTags(schema.properties[propName], propTags, propDescription);
+      }
+
+      if (required.length > 0) {
+        schema.required = required;
+      }
+
+      applyJSDocTags(schema, tags, description);
+      return schema;
+    }
+
+    // For mixed intersections, use allOf
+    schema.allOf = type.types.map((t) => compile(t, typeChecker));
+    applyJSDocTags(schema, tags, description);
+    return schema;
   }
 
   // Unsupported type
