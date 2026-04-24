@@ -39,11 +39,7 @@ function compileObjectProperties(
     const propName = prop.getName();
     const propType = typeChecker.getTypeOfSymbol(prop);
 
-    const isOptional =
-      (prop.flags & ts.SymbolFlags.Optional) !== 0 ||
-      (propType.flags & ts.TypeFlags.Undefined) !== 0 ||
-      (propType.isUnion() &&
-        propType.types.some((t) => t.flags & ts.TypeFlags.Undefined));
+    const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
 
     if (!isOptional) {
       required.push(propName);
@@ -57,7 +53,9 @@ function compileObjectProperties(
       continue;
     }
 
-    schema.properties[propName] = compile(propType, typeChecker);
+    schema.properties[propName] = compile(propType, typeChecker, {
+      ignoreUndefinedInUnion: isOptional,
+    });
 
     const propDescription = getDescription(prop, typeChecker);
     applyJSDocTags(schema.properties[propName], propTags, propDescription);
@@ -105,7 +103,10 @@ const LITERAL_TYPES: [
  */
 export function compile(
   type: ts.Type,
-  typeChecker: ts.TypeChecker
+  typeChecker: ts.TypeChecker,
+  options?: {
+    ignoreUndefinedInUnion?: boolean;
+  }
 ): JSONSchema {
   const schema: JSONSchema = {};
 
@@ -149,10 +150,21 @@ export function compile(
 
   // Handle union types as enums if they are literal types
   if (type.isUnion()) {
+    const unionTypes = options?.ignoreUndefinedInUnion
+      ? type.types.filter((t) => (t.flags & ts.TypeFlags.Undefined) === 0)
+      : type.types;
+
+    if (unionTypes.length === 1) {
+      const [singleUnionType] = unionTypes;
+      if (singleUnionType) {
+        return compile(singleUnionType, typeChecker);
+      }
+    }
+
     const enumValues: (string | number | boolean)[] = [];
     let allLiterals = true;
 
-    for (const unionType of type.types) {
+    for (const unionType of unionTypes) {
       const value = extractLiteralValue(unionType, typeChecker, true);
       if (value !== undefined) {
         enumValues.push(value);

@@ -160,6 +160,22 @@ describe('ts-json-schema', () => {
       });
     });
 
+    it('should compile optional literal union properties', () => {
+      const { typeChecker, type } = createProgramAndTypeChecker(`
+        interface Person {
+          role?: 'admin' | 'user';
+        }
+        type T = Person;
+      `);
+      const schema = compile(type, typeChecker);
+      expect(schema).toEqual({
+        type: 'object',
+        properties: {
+          role: { enum: ['admin', 'user'] },
+        },
+      });
+    });
+
     it('should ignore optional property with @ignore tag', () => {
       const { typeChecker, type } = createProgramAndTypeChecker(`
         interface Person {
@@ -190,6 +206,18 @@ describe('ts-json-schema', () => {
       `);
       expect(() => compile(type, typeChecker)).toThrow(
         'Cannot ignore required property: age'
+      );
+    });
+
+    it('should keep required properties with explicit undefined unions unsupported', () => {
+      const { typeChecker, type } = createProgramAndTypeChecker(`
+        interface Person {
+          age: number | undefined;
+        }
+        type T = Person;
+      `);
+      expect(() => compile(type, typeChecker)).toThrow(
+        'Complex union types are not supported. Only literal type unions (enums) are supported.'
       );
     });
   });
