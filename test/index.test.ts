@@ -141,6 +141,25 @@ describe('ts-json-schema', () => {
       });
     });
 
+    it('should compile top-level object unioned with undefined', () => {
+      const { typeChecker, type } = createProgramAndTypeChecker(`
+        interface Person {
+          name: string;
+          age?: number;
+        }
+        type T = Person | undefined;
+      `);
+      const schema = compile(type, typeChecker);
+      expect(schema).toEqual({
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          age: { type: 'number' },
+        },
+        required: ['name'],
+      });
+    });
+
     it('should compile object with optional properties', () => {
       const { typeChecker, type } = createProgramAndTypeChecker(`
         interface Person {

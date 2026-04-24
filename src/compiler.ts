@@ -108,6 +108,19 @@ export function compile(
     ignoreUndefinedInUnion?: boolean;
   }
 ): JSONSchema {
+  if (!options?.ignoreUndefinedInUnion && type.isUnion()) {
+    const unionTypes = type.types.filter(
+      (t) => (t.flags & ts.TypeFlags.Undefined) === 0
+    );
+
+    const singleUnionType = unionTypes[0];
+    if (unionTypes.length === 1 && singleUnionType) {
+      if (singleUnionType.flags & ts.TypeFlags.Object) {
+        return compile(singleUnionType, typeChecker);
+      }
+    }
+  }
+
   const schema: JSONSchema = {};
 
   // Get symbol for JSDoc extraction
