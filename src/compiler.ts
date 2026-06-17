@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import type { JSONSchema } from './types';
+import type { JSONSchema, JSONSchemaType } from './types';
 import { extractJSDocTags, getDescription, applyJSDocTags } from './utils';
 
 /**
@@ -21,6 +21,10 @@ function extractLiteralValue(
     return typeChecker.typeToString(t) === 'true';
   }
   return undefined;
+}
+
+function stripUndefinedFromUnion(type: ts.UnionType): ts.Type[] {
+  return type.types.filter((t) => (t.flags & ts.TypeFlags.Undefined) === 0);
 }
 
 /**
@@ -108,19 +112,6 @@ export function compile(
     ignoreUndefinedInUnion?: boolean;
   }
 ): JSONSchema {
-  if (!options?.ignoreUndefinedInUnion && type.isUnion()) {
-    const unionTypes = type.types.filter(
-      (t) => (t.flags & ts.TypeFlags.Undefined) === 0
-    );
-
-    const singleUnionType = unionTypes[0];
-    if (unionTypes.length === 1 && singleUnionType) {
-      if (singleUnionType.flags & ts.TypeFlags.Object) {
-        return compile(singleUnionType, typeChecker);
-      }
-    }
-  }
-
   const schema: JSONSchema = {};
 
   // Get symbol for JSDoc extraction
@@ -163,14 +154,15 @@ export function compile(
 
   // Handle union types as enums if they are literal types
   if (type.isUnion()) {
-    const unionTypes = options?.ignoreUndefinedInUnion
-      ? type.types.filter((t) => (t.flags & ts.TypeFlags.Undefined) === 0)
-      : type.types;
+    const unionTypes =
+      options?.ignoreUndefinedInUnion || type.types.length > 1
+        ? stripUndefinedFromUnion(type)
+        : type.types;
 
     if (unionTypes.length === 1) {
       const [singleUnionType] = unionTypes;
       if (singleUnionType) {
-        return compile(singleUnionType, typeChecker);
+        return compile(singleUnionType, typeChecker, options);
       }
     }
 
@@ -193,9 +185,35 @@ export function compile(
       return schema;
     }
 
-    throw new Error(
-      'Complex union types are not supported. Only literal type unions (enums) are supported.'
+    const memberSchemas = unionTypes.map((unionType) =>
+      compile(unionType, typeChecker, options)
     );
+
+    const primitiveTypes = new Set<JSONSchemaType>();
+    let canMergePrimitiveTypes = true;
+
+    for (const memberSchema of memberSchemas) {
+      const { type: memberType } = memberSchema;
+      if (
+        typeof memberType === 'string' &&
+        Object.keys(memberSchema).length === 1 &&
+        !primitiveTypes.has(memberType)
+      ) {
+        primitiveTypes.add(memberType);
+      } else {
+        canMergePrimitiveTypes = false;
+        break;
+      }
+    }
+
+    if (canMergePrimitiveTypes) {
+      schema.type = [...primitiveTypes];
+    } else {
+      schema.anyOf = memberSchemas;
+    }
+
+    applyJSDocTags(schema, tags, description);
+    return schema;
   }
 
   // Handle array type

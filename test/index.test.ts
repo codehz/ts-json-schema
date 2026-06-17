@@ -107,6 +107,47 @@ describe('ts-json-schema', () => {
       const schema = compile(type, typeChecker);
       expect(schema).toEqual({ enum: [1, 2, 3] });
     });
+
+    it('should ignore undefined in top-level primitive union', () => {
+      const { typeChecker, type } = createProgramAndTypeChecker(
+        'type T = number | undefined;'
+      );
+      const schema = compile(type, typeChecker);
+      expect(schema).toEqual({ type: 'number' });
+    });
+
+    it('should merge primitive unions into type arrays', () => {
+      const { typeChecker, type } = createProgramAndTypeChecker(
+        'type T = string | number;'
+      );
+      const schema = compile(type, typeChecker);
+      expect(schema).toEqual({ type: ['string', 'number'] });
+    });
+
+    it('should compile complex unions with anyOf', () => {
+      const { typeChecker, type } = createProgramAndTypeChecker(`
+        type T = { a: number } | { b: string };
+      `);
+      const schema = compile(type, typeChecker);
+      expect(schema).toEqual({
+        anyOf: [
+          {
+            type: 'object',
+            properties: {
+              a: { type: 'number' },
+            },
+            required: ['a'],
+          },
+          {
+            type: 'object',
+            properties: {
+              b: { type: 'string' },
+            },
+            required: ['b'],
+          },
+        ],
+      });
+    });
   });
 
   describe('array types', () => {
@@ -228,16 +269,37 @@ describe('ts-json-schema', () => {
       );
     });
 
-    it('should keep required properties with explicit undefined unions unsupported', () => {
+    it('should keep required properties with explicit undefined unions required', () => {
       const { typeChecker, type } = createProgramAndTypeChecker(`
         interface Person {
           age: number | undefined;
         }
         type T = Person;
       `);
-      expect(() => compile(type, typeChecker)).toThrow(
-        'Complex union types are not supported. Only literal type unions (enums) are supported.'
-      );
+      const schema = compile(type, typeChecker);
+      expect(schema).toEqual({
+        type: 'object',
+        properties: {
+          age: { type: 'number' },
+        },
+        required: ['age'],
+      });
+    });
+
+    it('should compile optional mixed primitive union properties', () => {
+      const { typeChecker, type } = createProgramAndTypeChecker(`
+        interface Person {
+          value?: string | number;
+        }
+        type T = Person;
+      `);
+      const schema = compile(type, typeChecker);
+      expect(schema).toEqual({
+        type: 'object',
+        properties: {
+          value: { type: ['string', 'number'] },
+        },
+      });
     });
   });
 

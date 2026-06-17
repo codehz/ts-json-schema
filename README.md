@@ -8,6 +8,7 @@
 
 - 将基本 TypeScript 类型（string/number/boolean/null/array/object）转换为 JSON Schema。
 - 支持字面量类型 & 字面量联合（转换为 `enum`）。
+- 支持复杂联合类型（转换为 `type` 数组或 `anyOf`）。
 - 支持数组元素类型推断（`Array<T>` / `T[]`）。
 - 从 JSDoc 注释提取额外限制（例如 `@minimum`、`@minLength` 等）。
 - 支持属性级别的 `@default`、`@pattern`、`@format` 等标签。
@@ -150,15 +151,15 @@ ts.forEachChild(sourceFile, (node) => {
 
 - 基本类型（string, number, boolean, null）
 - 字面量类型（string/number/boolean literals）与字面量联合（转换为 `enum`）
+- 复杂联合类型（`T | undefined` 解包，简单基础类型 union 合并为 `type` 数组，其余使用 `anyOf`）
 - 对象（`properties`, `required`）、数组与元素类型
+- 交叉类型（纯对象交叉直接合并，混合交叉使用 `allOf`）
 - 从 JSDoc 提取额外约束
 
 限制（当前未支持或有限支持的项）：
 
-- 交叉类型（intersection）不支持，会抛出错误
-- 复杂联合类型（包含非字面量的 union）不支持，会抛出错误
 - 元组类型不支持，会抛出错误
-- `undefined` 被映射为 JSON Schema 中的 `null`
+- 顶层裸 `undefined` 仍会映射为 JSON Schema 中的 `null`；在 union 中会优先按可选语义解包
 - 泛型 & 高级类型（如函数、映射类型、索引签名等）没有完整支持
 
 如果遇到未支持的类型，会抛出错误并包含 `typeChecker.typeToString(type)` 的信息，用于调试和增强库支持。

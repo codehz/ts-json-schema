@@ -1,15 +1,17 @@
 /**
  * JSON Schema type definition
  */
+export type JSONSchemaType =
+  | 'string'
+  | 'number'
+  | 'integer'
+  | 'boolean'
+  | 'object'
+  | 'array'
+  | 'null';
+
 export interface JSONSchema {
-  type?:
-    | 'string'
-    | 'number'
-    | 'integer'
-    | 'boolean'
-    | 'object'
-    | 'array'
-    | 'null';
+  type?: JSONSchemaType | JSONSchemaType[];
   description?: string;
 
   // String validations
