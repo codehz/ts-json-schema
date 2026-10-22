@@ -6,7 +6,7 @@ Big-picture
 
 - Source lives in `src/` (`compiler.ts`, `utils.ts`, `types.ts`, `index.ts`).
 - Purpose: Convert a TypeScript 7.1 `Type` from `typescript/async` into JSON Schema using `await compile(type, checker)`.
-- Build: Compiled with `tsdown` into ESM/CJS + DTS according to `tsdown.config.ts` and `tsconfig.build.json`.
+- Build: Compiled with `tsdown` into ESM + DTS according to `tsdown.config.ts` and `tsconfig.build.json`. There is no CJS build; `typescript/async` is ESM-only.
 
 Key files
 
@@ -32,7 +32,7 @@ Project patterns & conventions (code-level)
 - JSDoc text is already a string: `tag.text` and `symbol.getDocumentationComment(checker)`, not `SymbolDisplayPart[]`.
 - Unsupported types still throw. The message includes `await typeChecker.typeToString(type)`.
 
-When editing `index.ts` for new TypeScript features
+When editing `src/compiler.ts` for new TypeScript features
 
 - Update README: If you add support for new type features, include an example input TypeScript interface + expected JSON Schema output in `README.md`.
 - Add tests: Create unit tests to assert the expected schema for new features. Pick a test runner and add to package scripts.
