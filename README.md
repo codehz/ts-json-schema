@@ -17,7 +17,7 @@
 
 ## 安装
 
-> 本项目将 `typescript` 作为 `peerDependency`，请确保在项目中安装 `typescript`（推荐 v5 及以上）。
+> 本项目将 `typescript@7.1.0-beta` 作为 `peerDependency`。类型查询走 `typescript/async`（仅 ESM），`compile` 是异步的。本包同样只提供 ESM，没有 `require` 入口。
 
 使用 bun:
 
@@ -65,29 +65,39 @@ interface Person {
 }
 ```
 
-2. 运行 TypeScript Compiler API 并使用 `compile`:
+2. 用 `typescript/async` 创建 program，再 `await compile`:
 
 ```ts
-import ts from 'typescript';
+import { isInterfaceDeclaration } from 'typescript/ast/is';
+import { API, ModuleKind } from 'typescript/async';
+import { ScriptTarget } from 'typescript/ast';
 import { compile } from '@codehz/ts-json-schema';
 
-// 创建 program（可以按需配置 compilerOptions）
-const program = ts.createProgram(['./example.ts'], {
-  noEmit: true,
-  target: ts.ScriptTarget.ES2020,
-  module: ts.ModuleKind.ESNext,
-});
+const api = new API();
+try {
+  const program = await api.createProgram(['./example.ts'], {
+    noEmit: true,
+    target: ScriptTarget.ES2020,
+    module: ModuleKind.ESNext,
+  });
+  try {
+    const checker = program.getProject().checker;
+    const sourceFile = await program.getSourceFile('./example.ts');
+    if (!sourceFile) throw new Error('example.ts not found');
 
-const checker = program.getTypeChecker();
-const sourceFile = program.getSourceFile('./example.ts')!;
-
-ts.forEachChild(sourceFile, (node) => {
-  if (ts.isInterfaceDeclaration(node) && node.name.text === 'Person') {
-    const type = checker.getTypeAtLocation(node);
-    const schema = compile(type, checker);
-    console.log(JSON.stringify(schema, null, 2));
+    for (const node of sourceFile.statements) {
+      if (isInterfaceDeclaration(node) && node.name.text === 'Person') {
+        const type = await checker.getTypeAtLocation(node);
+        const schema = await compile(type, checker);
+        console.log(JSON.stringify(schema, null, 2));
+      }
+    }
+  } finally {
+    await program.dispose();
   }
-});
+} finally {
+  await api.close();
+}
 ```
 
 输出（示例）：
@@ -120,13 +130,14 @@ ts.forEachChild(sourceFile, (node) => {
 
 ## API
 
-- `compile(type: ts.Type, typeChecker: ts.TypeChecker): JSONSchema`
-  - 将给定的 `ts.Type` 编译为 `JSONSchema`。
-  - `typeChecker` 是从 `ts.Program` 中获取到的 `TypeChecker` 实例。
+- `compile(type, typeChecker, options?): Promise<JSONSchema>`
+  - 将给定的 `typescript/async` `Type` 编译为 `JSONSchema`。
+  - `typeChecker` 是 `program.getProject().checker`。
+  - `options.ignoreUndefinedInUnion` 为真时，从联合类型里去掉 `undefined`（可选属性会自动打开）。
 
 ### `JSONSchema`（导出类型）
 
-该接口在 `index.ts` 中定义，包含常见 JSON Schema 字段，如 `type, description, enum, const, properties, items, minLength, maxLength, minimum, maximum` 等。
+该接口在 `src/types.ts` 中定义，包含常见 JSON Schema 字段，如 `type, description, enum, const, properties, items, minLength, maxLength, minimum, maximum` 等。
 
 ---
 
@@ -162,14 +173,14 @@ ts.forEachChild(sourceFile, (node) => {
 - 顶层裸 `undefined` 仍会映射为 JSON Schema 中的 `null`；在 union 中会优先按可选语义解包
 - 泛型 & 高级类型（如函数、映射类型、索引签名等）没有完整支持
 
-如果遇到未支持的类型，会抛出错误并包含 `typeChecker.typeToString(type)` 的信息，用于调试和增强库支持。
+如果遇到未支持的类型，会抛出错误并包含 `typeChecker.typeToString(type)` 的结果，用于调试和增强库支持。
 
 ---
 
 ## 开发
 
-- 代码位于 `index.ts`。
-- 该项目以 `typescript` 的 `TypeChecker` 为核心，建议阅读 TypeScript Compiler API 文档来扩展功能。
+- 代码位于 `src/`。`compile` 以及符号上的 `getJsDocTags` / `getDocumentationComment` / `getSymbol` 都是异步的。
+- 该项目以 `typescript/async` 的 `Checker` 为核心。program 用完要 `dispose()`，进程用完要 `api.close()`。
 
 ---
 

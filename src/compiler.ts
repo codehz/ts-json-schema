@@ -1,55 +1,53 @@
-import ts from 'typescript';
+import {
+  SymbolFlags,
+  TypeFlags,
+  type Checker,
+  type Type,
+  type TypeReference,
+} from 'typescript/async';
 import type { JSONSchema, JSONSchemaType } from './types';
-import { extractJSDocTags, getDescription, applyJSDocTags } from './utils';
+import { applyJSDocTags, extractJSDocTags, getDescription } from './utils';
+
+export interface CompileOptions {
+  ignoreUndefinedInUnion?: boolean;
+}
 
 /**
  * Extract a literal value from a type, or undefined if not a literal type.
  * When includeBooleans is true, also extracts boolean literal values.
  */
 function extractLiteralValue(
-  t: ts.Type,
-  typeChecker: ts.TypeChecker,
+  type: Type,
   includeBooleans: boolean
 ): string | number | boolean | undefined {
-  if (t.flags & ts.TypeFlags.StringLiteral) {
-    return (t as ts.StringLiteralType).value;
-  }
-  if (t.flags & ts.TypeFlags.NumberLiteral) {
-    return (t as ts.NumberLiteralType).value;
-  }
-  if (includeBooleans && t.flags & ts.TypeFlags.BooleanLiteral) {
-    return typeChecker.typeToString(t) === 'true';
-  }
+  if (type.isStringLiteralType()) return type.value;
+  if (type.isNumberLiteralType()) return type.value;
+  if (includeBooleans && type.isBooleanLiteralType()) return type.value;
   return undefined;
-}
-
-function stripUndefinedFromUnion(type: ts.UnionType): ts.Type[] {
-  return type.types.filter((t) => (t.flags & ts.TypeFlags.Undefined) === 0);
 }
 
 /**
  * Compile object properties into a schema, shared by object types and merged intersections.
  */
-function compileObjectProperties(
+async function compileObjectProperties(
   schema: JSONSchema,
-  type: ts.Type,
-  typeChecker: ts.TypeChecker
-): void {
+  type: Type,
+  typeChecker: Checker
+): Promise<void> {
   schema.type = 'object';
   schema.properties = {};
   const required: string[] = [];
 
-  for (const prop of typeChecker.getPropertiesOfType(type)) {
-    const propName = prop.getName();
-    const propType = typeChecker.getTypeOfSymbol(prop);
-
-    const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
+  for (const prop of await typeChecker.getPropertiesOfType(type)) {
+    const propName = prop.name;
+    const propType = await typeChecker.getTypeOfSymbol(prop);
+    const isOptional = (prop.flags & SymbolFlags.Optional) !== 0;
 
     if (!isOptional) {
       required.push(propName);
     }
 
-    const propTags = extractJSDocTags(prop, typeChecker);
+    const propTags = await extractJSDocTags(prop, typeChecker);
     if (propTags.has('ignore')) {
       if (!isOptional) {
         throw new Error(`Cannot ignore required property: ${propName}`);
@@ -57,11 +55,11 @@ function compileObjectProperties(
       continue;
     }
 
-    schema.properties[propName] = compile(propType, typeChecker, {
+    schema.properties[propName] = await compile(propType, typeChecker, {
       ignoreUndefinedInUnion: isOptional,
     });
 
-    const propDescription = getDescription(prop, typeChecker);
+    const propDescription = await getDescription(prop, typeChecker);
     applyJSDocTags(schema.properties[propName], propTags, propDescription);
   }
 
@@ -72,54 +70,28 @@ function compileObjectProperties(
 
 /** Primitive type flag to JSON Schema type mapping */
 const PRIMITIVE_TYPES: [number, JSONSchema['type']][] = [
-  [ts.TypeFlags.String, 'string'],
-  [ts.TypeFlags.Number, 'number'],
-  [ts.TypeFlags.Boolean, 'boolean'],
-  [ts.TypeFlags.Null, 'null'],
-  [ts.TypeFlags.Undefined, 'null'],
-];
-
-/** Literal type flag to JSON Schema type mapping (for extracting const values) */
-const LITERAL_TYPES: [
-  number,
-  JSONSchema['type'],
-  (t: ts.Type, tc: ts.TypeChecker) => unknown,
-][] = [
-  [
-    ts.TypeFlags.StringLiteral,
-    'string',
-    (t) => (t as ts.StringLiteralType).value,
-  ],
-  [
-    ts.TypeFlags.NumberLiteral,
-    'number',
-    (t) => (t as ts.NumberLiteralType).value,
-  ],
-  [
-    ts.TypeFlags.BooleanLiteral,
-    'boolean',
-    (t, tc) => tc.typeToString(t) === 'true',
-  ],
+  [TypeFlags.String, 'string'],
+  [TypeFlags.Number, 'number'],
+  [TypeFlags.Boolean, 'boolean'],
+  [TypeFlags.Null, 'null'],
+  [TypeFlags.Undefined, 'null'],
 ];
 
 /**
- * Compile a TypeScript type to JSON Schema
+ * Compile a TypeScript type to JSON Schema.
+ * `type` and `typeChecker` come from `typescript/async`.
  */
-export function compile(
-  type: ts.Type,
-  typeChecker: ts.TypeChecker,
-  options?: {
-    ignoreUndefinedInUnion?: boolean;
-  }
-): JSONSchema {
+export async function compile(
+  type: Type,
+  typeChecker: Checker,
+  options?: CompileOptions
+): Promise<JSONSchema> {
   const schema: JSONSchema = {};
 
-  // Get symbol for JSDoc extraction
-  const symbol = type.getSymbol() || type.aliasSymbol;
-  const tags = extractJSDocTags(symbol, typeChecker);
-  const description = getDescription(symbol, typeChecker);
+  const symbol = (await type.getSymbol()) ?? (await type.getAliasSymbol());
+  const tags = await extractJSDocTags(symbol, typeChecker);
+  const description = await getDescription(symbol, typeChecker);
 
-  // Handle primitive types (string, number, boolean, null, undefined)
   for (const [flag, schemaType] of PRIMITIVE_TYPES) {
     if (type.flags & flag) {
       schema.type = schemaType;
@@ -128,22 +100,30 @@ export function compile(
     }
   }
 
-  // Handle literal types (string, number, boolean literals)
-  for (const [flag, schemaType, getValue] of LITERAL_TYPES) {
-    if (type.flags & flag) {
-      schema.type = schemaType;
-      schema.const = getValue(type, typeChecker);
-      applyJSDocTags(schema, tags, description);
-      return schema;
-    }
+  if (type.isStringLiteralType()) {
+    schema.type = 'string';
+    schema.const = type.value;
+    applyJSDocTags(schema, tags, description);
+    return schema;
+  }
+  if (type.isNumberLiteralType()) {
+    schema.type = 'number';
+    schema.const = type.value;
+    applyJSDocTags(schema, tags, description);
+    return schema;
+  }
+  if (type.isBooleanLiteralType()) {
+    schema.type = 'boolean';
+    schema.const = type.value;
+    applyJSDocTags(schema, tags, description);
+    return schema;
   }
 
-  // Handle enum type
-  if (type.flags & ts.TypeFlags.EnumLike || type.flags & ts.TypeFlags.Enum) {
-    if (type.isUnion()) {
-      const enumValues = type.types
-        .map((t) => extractLiteralValue(t, typeChecker, false))
-        .filter((v): v is string | number => v !== undefined);
+  if (type.flags & TypeFlags.EnumLike || type.flags & TypeFlags.Enum) {
+    if (type.isUnionType()) {
+      const enumValues = (await type.getTypes())
+        .map((member) => extractLiteralValue(member, false))
+        .filter((value): value is string | number => value !== undefined);
       if (enumValues.length > 0) {
         schema.enum = enumValues;
         applyJSDocTags(schema, tags, description);
@@ -152,15 +132,17 @@ export function compile(
     }
   }
 
-  // Handle union types as enums if they are literal types
-  if (type.isUnion()) {
+  if (type.isUnionType()) {
+    const allTypes = await type.getTypes();
     const unionTypes =
-      options?.ignoreUndefinedInUnion || type.types.length > 1
-        ? stripUndefinedFromUnion(type)
-        : type.types;
+      options?.ignoreUndefinedInUnion || allTypes.length > 1
+        ? allTypes.filter(
+            (member) => (member.flags & TypeFlags.Undefined) === 0
+          )
+        : allTypes;
 
     if (unionTypes.length === 1) {
-      const [singleUnionType] = unionTypes;
+      const singleUnionType = unionTypes[0];
       if (singleUnionType) {
         return compile(singleUnionType, typeChecker, options);
       }
@@ -170,7 +152,7 @@ export function compile(
     let allLiterals = true;
 
     for (const unionType of unionTypes) {
-      const value = extractLiteralValue(unionType, typeChecker, true);
+      const value = extractLiteralValue(unionType, true);
       if (value !== undefined) {
         enumValues.push(value);
       } else {
@@ -185,9 +167,10 @@ export function compile(
       return schema;
     }
 
-    const memberSchemas = unionTypes.map((unionType) =>
-      compile(unionType, typeChecker, options)
-    );
+    const memberSchemas: JSONSchema[] = [];
+    for (const unionType of unionTypes) {
+      memberSchemas.push(await compile(unionType, typeChecker, options));
+    }
 
     const primitiveTypes = new Set<JSONSchemaType>();
     let canMergePrimitiveTypes = true;
@@ -216,59 +199,57 @@ export function compile(
     return schema;
   }
 
-  // Handle array type
-  if (typeChecker.isArrayType(type)) {
+  if (await typeChecker.isArrayType(type)) {
     schema.type = 'array';
-
-    const typeRef = type as ts.TypeReference;
-    const typeArguments =
-      typeRef.typeArguments ||
-      (
-        typeRef as ts.TypeReference & {
-          resolvedTypeArguments?: readonly ts.Type[];
-        }
-      ).resolvedTypeArguments;
-    if (Array.isArray(typeArguments) && typeArguments.length > 0) {
-      schema.items = compile(typeArguments[0], typeChecker);
+    const typeArguments = await typeChecker.getTypeArguments(
+      type as TypeReference
+    );
+    const itemType = typeArguments[0];
+    if (itemType) {
+      schema.items = await compile(itemType, typeChecker);
     }
-
     applyJSDocTags(schema, tags, description);
     return schema;
   }
 
-  // Handle tuple type
-  if (typeChecker.isTupleType(type)) {
+  if (await typeChecker.isTupleType(type)) {
     throw new Error('Tuple types are not supported.');
   }
 
-  // Handle object type
-  if (type.flags & ts.TypeFlags.Object) {
-    compileObjectProperties(schema, type, typeChecker);
+  if (type.flags & TypeFlags.Object) {
+    await compileObjectProperties(schema, type, typeChecker);
     applyJSDocTags(schema, tags, description);
     return schema;
   }
 
-  // Handle intersection types using allOf
-  if (type.isIntersection()) {
-    const allObjects = type.types.every(
-      (t) =>
-        t.flags & ts.TypeFlags.Object &&
-        !typeChecker.isArrayType(t) &&
-        !typeChecker.isTupleType(t)
-    );
+  if (type.isIntersectionType()) {
+    const intersectionTypes = await type.getTypes();
+    let allObjectTypes = true;
+    for (const member of intersectionTypes) {
+      if (
+        (member.flags & TypeFlags.Object) === 0 ||
+        (await typeChecker.isArrayType(member)) ||
+        (await typeChecker.isTupleType(member))
+      ) {
+        allObjectTypes = false;
+        break;
+      }
+    }
 
-    if (allObjects) {
-      compileObjectProperties(schema, type, typeChecker);
+    if (allObjectTypes) {
+      await compileObjectProperties(schema, type, typeChecker);
       applyJSDocTags(schema, tags, description);
       return schema;
     }
 
-    // For mixed intersections, use allOf
-    schema.allOf = type.types.map((t) => compile(t, typeChecker));
+    const memberSchemas: JSONSchema[] = [];
+    for (const member of intersectionTypes) {
+      memberSchemas.push(await compile(member, typeChecker));
+    }
+    schema.allOf = memberSchemas;
     applyJSDocTags(schema, tags, description);
     return schema;
   }
 
-  // Unsupported type
-  throw new Error(`Unsupported type: ${typeChecker.typeToString(type)}`);
+  throw new Error(`Unsupported type: ${await typeChecker.typeToString(type)}`);
 }

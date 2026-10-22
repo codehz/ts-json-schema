@@ -4,13 +4,13 @@ This document provides project-specific guidance to help an AI coding agent be i
 
 Big-picture
 
-- Single-file library: `index.ts` is the only source file and contains the entire library implementation.
-- Purpose: Convert TypeScript `ts.Type` (Compiler API) into JSON Schema objects using `compile(type, typeChecker)` and exported `JSONSchema` type.
+- Source lives in `src/` (`compiler.ts`, `utils.ts`, `types.ts`, `index.ts`).
+- Purpose: Convert a TypeScript 7.1 `Type` from `typescript/async` into JSON Schema using `await compile(type, checker)`.
 - Build: Compiled with `tsdown` into ESM/CJS + DTS according to `tsdown.config.ts` and `tsconfig.build.json`.
 
 Key files
 
-- `index.ts` — Implementation. Focus here for features and bug fixes.
+- `src/compiler.ts` — Implementation. Focus here for features and bug fixes.
 - `README.md` — Usage examples and supported JSDoc tags. Use as the authoritative sample and to include examples in PRs.
 - `tsdown.config.ts`, `tsconfig.build.json`, `tsconfig.json` — Build & type-check configuration.
 - `package.json` — Build & dev scripts (see section below).
@@ -19,17 +19,18 @@ Developer workflows / commands
 
 - Install: `bun i` (project uses Bun, dev dependencies include `tsdown` and `typescript`).
 - Type-check: `bunx tsc --noEmit` (script: `typecheck`).
-- Build: `bunx tsdown -c tsdown.config.ts` (script: `build`, `prepare`).
-- Local test run: No test harness configured; unit tests should be added with any runner (Vitest, Bun test, Jest). For quick manual checks, use Node to run a small script that creates a TypeScript `Program` and invokes `compile` (example in `README.md`).
+- Build: `bunx tsdown -c tsdown.config.ts` (script: `build`). Declarations use `dts.tsgo` because TypeScript 7 has no legacy compiler API. That requires devDependency `@typescript/native-preview` aliased to the same `typescript` version.
+- Local test run: `bun test`. Tests create a real `API` / `Program` from `typescript/async` and dispose both.
 
 Project patterns & conventions (code-level)
 
-- Uses the TypeScript Compiler API extensively. When working on type resolution, favor using `Program`, `TypeChecker`, `typeToString`, and symbol-based JSDoc extraction.
+- Uses the TypeScript 7.1 async Compiler API (`typescript/async`). Checker methods such as `getPropertiesOfType`, `getTypeOfSymbol`, `isArrayType`, `getTypeArguments`, `isTupleType`, and `typeToString` return promises. `Type#getTypes`, `getSymbol`, and `getAliasSymbol` do too.
 - JSDoc tags: `@minimum`, `@maximum`, `@multipleOf`, `@minLength`, `@maxLength`, `@pattern`, `@format`, `@minItems`, `@maxItems`, `@default`, `@integer` are parsed and applied to the generated schema. Keep this in mind when adding constraints.
-- Symbol vs aliasSymbol: The code uses `type.getSymbol() || type.aliasSymbol` to attempt to find symbols for JSDoc extraction (watch for aliased types).
-- Optional property detection: The code detects optional properties with a union that includes `undefined`, or `prop.flags & ts.SymbolFlags.Optional`. Use the same logic when adding new property-related handling.
+- Symbol vs alias symbol: `(await type.getSymbol()) ?? (await type.getAliasSymbol())`. Do not read `type.aliasSymbol`; that field is not on the public async `Type`.
+- Optional property detection: `prop.flags & SymbolFlags.Optional`. Optional properties are compiled with `ignoreUndefinedInUnion` so `T | undefined` unwraps. `prop.name` replaces `prop.getName()`.
 - Default value parsing: The `@default` tag attempts `JSON.parse` and falls back to a string value — stay consistent if you add more tag parsing logic.
-- Unsupported types: Several features throw errors intentionally (e.g. intersection, tuples, complex unions). Tests or stronger fallback implementations are preferred instead of silent failures. The thrown error uses `typeChecker.typeToString(type)` to help debugging.
+- JSDoc text is already a string: `tag.text` and `symbol.getDocumentationComment(checker)`, not `SymbolDisplayPart[]`.
+- Unsupported types still throw. The message includes `await typeChecker.typeToString(type)`.
 
 When editing `index.ts` for new TypeScript features
 
@@ -40,9 +41,9 @@ When editing `index.ts` for new TypeScript features
 
 Debugging tips
 
-- Use `typeChecker.typeToString(type)` to get a helpful human-readable description of a `Type` or sub-type.
-- For quick manual testing, copy the snippet in `README.md` to a new local `example.ts`, then create a small script that sets up a `Program` and prints `compile(...)` output.
-- If JSDoc tags don't appear, inspect `symbol.getJsDocTags(typeChecker)` and `symbol.getDocumentationComment(typeChecker)` — tags are read from the symbol, not the type directly.
+- `await typeChecker.typeToString(type)` is the human-readable description used in unsupported-type errors.
+- For manual testing, follow the `typescript/async` snippet in `README.md`: `new API()`, `createProgram`, `program.getProject().checker`, `await compile(...)`, then `program.dispose()` and `api.close()`.
+- If JSDoc tags don't appear, inspect `await symbol.getJsDocTags(checker)` and `await symbol.getDocumentationComment(checker)`.
 
 Suggested PR checklist for AI agents
 
@@ -54,7 +55,7 @@ Suggested PR checklist for AI agents
 Examples
 
 - Use `compile()` directly (from README):
-  - Build `Program`, obtain `typeChecker`, find the `InterfaceDeclaration`, call `compile(type, typeChecker)`.
+  - Build a `Program` with `API` from `typescript/async`, obtain `program.getProject().checker`, find the `InterfaceDeclaration`, `await compile(type, checker)`.
 - The Person interface example demonstrates property-level JSDoc tags and results.
 
 Edge cases and non-goals

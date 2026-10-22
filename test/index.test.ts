@@ -1,134 +1,126 @@
-import { describe, it, expect } from 'bun:test';
-import ts from 'typescript';
-import { compile } from '../src/index';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { isTypeAliasDeclaration } from 'typescript/ast/is';
+import { API } from 'typescript/async';
+import { compile, type JSONSchema } from '../src/index';
 
-function createProgramAndTypeChecker(code: string): {
-  program: ts.Program;
-  typeChecker: ts.TypeChecker;
-  type: ts.Type;
-} {
-  const fileName = 'test.ts';
-  const host = ts.createCompilerHost({});
-  const originalReadFile = host.readFile;
-  host.readFile = (fileName: string) => {
-    if (fileName === 'test.ts') return code;
-    return originalReadFile!(fileName);
-  };
-  host.fileExists = (fileName: string) => {
-    if (fileName === 'test.ts') return true;
-    return ts.sys.fileExists(fileName);
-  };
-  const program = ts.createProgram([fileName], {}, host);
-  const typeChecker = program.getTypeChecker();
-  const sourceFile = program.getSourceFile(fileName)!;
-  let type: ts.Type | undefined;
-  ts.forEachChild(sourceFile, (node) => {
-    if (ts.isTypeAliasDeclaration(node) && node.name.text === 'T') {
-      type = typeChecker.getTypeAtLocation(node.type);
+let api: API | undefined;
+
+beforeAll(() => {
+  api = new API();
+});
+
+afterAll(async () => {
+  await api?.close();
+});
+
+async function compileSource(code: string): Promise<JSONSchema> {
+  if (!api) throw new Error('TypeScript API was not started');
+  const dir = mkdtempSync(join(tmpdir(), 'ts-json-schema-'));
+  const file = join(dir, 'test.ts');
+  writeFileSync(file, code);
+  const program = await api.createProgram([file], { noEmit: true });
+  try {
+    const sourceFile = await program.getSourceFile(file);
+    if (!sourceFile) throw new Error('Source file not found');
+    const typeChecker = program.getProject().checker;
+    const alias = sourceFile.statements.find(
+      (node) => isTypeAliasDeclaration(node) && node.name.text === 'T'
+    );
+    if (!alias || !isTypeAliasDeclaration(alias)) {
+      throw new Error('Type not found');
     }
-  });
-  if (!type) throw new Error('Type not found');
-  return { program, typeChecker, type };
+    const type = await typeChecker.getTypeFromTypeNode(alias.type);
+    return await compile(type, typeChecker);
+  } finally {
+    await program.dispose();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+async function captureError(code: string): Promise<Error> {
+  const error = await compileSource(code).then(
+    () => undefined,
+    (reason: unknown) => reason
+  );
+  if (!(error instanceof Error)) {
+    throw new Error(`Expected compile to throw, got ${String(error)}`);
+  }
+  return error;
 }
 
 describe('ts-json-schema', () => {
   describe('primitive types', () => {
-    it('should compile string type', () => {
-      const { typeChecker, type } =
-        createProgramAndTypeChecker('type T = string;');
-      const schema = compile(type, typeChecker);
+    it('should compile string type', async () => {
+      const schema = await compileSource('type T = string;');
       expect(schema).toEqual({ type: 'string' });
     });
 
-    it('should compile number type', () => {
-      const { typeChecker, type } =
-        createProgramAndTypeChecker('type T = number;');
-      const schema = compile(type, typeChecker);
+    it('should compile number type', async () => {
+      const schema = await compileSource('type T = number;');
       expect(schema).toEqual({ type: 'number' });
     });
 
-    it('should compile boolean type', () => {
-      const { typeChecker, type } =
-        createProgramAndTypeChecker('type T = boolean;');
-      const schema = compile(type, typeChecker);
+    it('should compile boolean type', async () => {
+      const schema = await compileSource('type T = boolean;');
       expect(schema).toEqual({ type: 'boolean' });
     });
 
-    it('should compile null type', () => {
-      const { typeChecker, type } =
-        createProgramAndTypeChecker('type T = null;');
-      const schema = compile(type, typeChecker);
+    it('should compile null type', async () => {
+      const schema = await compileSource('type T = null;');
       expect(schema).toEqual({ type: 'null' });
     });
   });
 
   describe('literal types', () => {
-    it('should compile string literal', () => {
-      const { typeChecker, type } =
-        createProgramAndTypeChecker("type T = 'hello';");
-      const schema = compile(type, typeChecker);
+    it('should compile string literal', async () => {
+      const schema = await compileSource("type T = 'hello';");
       expect(schema).toEqual({ type: 'string', const: 'hello' });
     });
 
-    it('should compile number literal', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker('type T = 42;');
-      const schema = compile(type, typeChecker);
+    it('should compile number literal', async () => {
+      const schema = await compileSource('type T = 42;');
       expect(schema).toEqual({ type: 'number', const: 42 });
     });
 
-    it('should compile boolean literal true', () => {
-      const { typeChecker, type } =
-        createProgramAndTypeChecker('type T = true;');
-      const schema = compile(type, typeChecker);
+    it('should compile boolean literal true', async () => {
+      const schema = await compileSource('type T = true;');
       expect(schema).toEqual({ type: 'boolean', const: true });
     });
 
-    it('should compile boolean literal false', () => {
-      const { typeChecker, type } =
-        createProgramAndTypeChecker('type T = false;');
-      const schema = compile(type, typeChecker);
+    it('should compile boolean literal false', async () => {
+      const schema = await compileSource('type T = false;');
       expect(schema).toEqual({ type: 'boolean', const: false });
     });
   });
 
   describe('enum types', () => {
-    it('should compile string union as enum', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(
-        "type T = 'a' | 'b' | 'c';"
-      );
-      const schema = compile(type, typeChecker);
+    it('should compile string union as enum', async () => {
+      const schema = await compileSource("type T = 'a' | 'b' | 'c';");
       expect(schema).toEqual({ enum: ['a', 'b', 'c'] });
     });
 
-    it('should compile number union as enum', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(
-        'type T = 1 | 2 | 3;'
-      );
-      const schema = compile(type, typeChecker);
+    it('should compile number union as enum', async () => {
+      const schema = await compileSource('type T = 1 | 2 | 3;');
       expect(schema).toEqual({ enum: [1, 2, 3] });
     });
 
-    it('should ignore undefined in top-level primitive union', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(
-        'type T = number | undefined;'
-      );
-      const schema = compile(type, typeChecker);
+    it('should ignore undefined in top-level primitive union', async () => {
+      const schema = await compileSource('type T = number | undefined;');
       expect(schema).toEqual({ type: 'number' });
     });
 
-    it('should merge primitive unions into type arrays', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(
-        'type T = string | number;'
-      );
-      const schema = compile(type, typeChecker);
+    it('should merge primitive unions into type arrays', async () => {
+      const schema = await compileSource('type T = string | number;');
       expect(schema).toEqual({ type: ['string', 'number'] });
     });
 
-    it('should compile complex unions with anyOf', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should compile complex unions with anyOf', async () => {
+      const schema = await compileSource(`
         type T = { a: number } | { b: string };
       `);
-      const schema = compile(type, typeChecker);
       expect(schema).toEqual({
         anyOf: [
           {
@@ -151,10 +143,8 @@ describe('ts-json-schema', () => {
   });
 
   describe('array types', () => {
-    it('should compile array type', () => {
-      const { typeChecker, type } =
-        createProgramAndTypeChecker('type T = string[];');
-      const schema = compile(type, typeChecker);
+    it('should compile array type', async () => {
+      const schema = await compileSource('type T = string[];');
       expect(schema).toEqual({
         type: 'array',
         items: { type: 'string' },
@@ -163,15 +153,14 @@ describe('ts-json-schema', () => {
   });
 
   describe('object types', () => {
-    it('should compile simple object type', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should compile simple object type', async () => {
+      const schema = await compileSource(`
         interface Person {
           name: string;
           age: number;
         }
         type T = Person;
       `);
-      const schema = compile(type, typeChecker);
       expect(schema).toEqual({
         type: 'object',
         properties: {
@@ -182,15 +171,14 @@ describe('ts-json-schema', () => {
       });
     });
 
-    it('should compile top-level object unioned with undefined', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should compile top-level object unioned with undefined', async () => {
+      const schema = await compileSource(`
         interface Person {
           name: string;
           age?: number;
         }
         type T = Person | undefined;
       `);
-      const schema = compile(type, typeChecker);
       expect(schema).toEqual({
         type: 'object',
         properties: {
@@ -201,15 +189,14 @@ describe('ts-json-schema', () => {
       });
     });
 
-    it('should compile object with optional properties', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should compile object with optional properties', async () => {
+      const schema = await compileSource(`
         interface Person {
           name: string;
           age?: number;
         }
         type T = Person;
       `);
-      const schema = compile(type, typeChecker);
       expect(schema).toEqual({
         type: 'object',
         properties: {
@@ -220,14 +207,13 @@ describe('ts-json-schema', () => {
       });
     });
 
-    it('should compile optional literal union properties', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should compile optional literal union properties', async () => {
+      const schema = await compileSource(`
         interface Person {
           role?: 'admin' | 'user';
         }
         type T = Person;
       `);
-      const schema = compile(type, typeChecker);
       expect(schema).toEqual({
         type: 'object',
         properties: {
@@ -236,8 +222,8 @@ describe('ts-json-schema', () => {
       });
     });
 
-    it('should ignore optional property with @ignore tag', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should ignore optional property with @ignore tag', async () => {
+      const schema = await compileSource(`
         interface Person {
           name: string;
           /** @ignore */
@@ -245,7 +231,6 @@ describe('ts-json-schema', () => {
         }
         type T = Person;
       `);
-      const schema = compile(type, typeChecker);
       expect(schema).toEqual({
         type: 'object',
         properties: {
@@ -255,8 +240,8 @@ describe('ts-json-schema', () => {
       });
     });
 
-    it('should throw error for required property with @ignore tag', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should throw error for required property with @ignore tag', async () => {
+      const error = await captureError(`
         interface Person {
           name: string;
           /** @ignore */
@@ -264,19 +249,16 @@ describe('ts-json-schema', () => {
         }
         type T = Person;
       `);
-      expect(() => compile(type, typeChecker)).toThrow(
-        'Cannot ignore required property: age'
-      );
+      expect(error.message).toBe('Cannot ignore required property: age');
     });
 
-    it('should keep required properties with explicit undefined unions required', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should keep required properties with explicit undefined unions required', async () => {
+      const schema = await compileSource(`
         interface Person {
           age: number | undefined;
         }
         type T = Person;
       `);
-      const schema = compile(type, typeChecker);
       expect(schema).toEqual({
         type: 'object',
         properties: {
@@ -286,14 +268,13 @@ describe('ts-json-schema', () => {
       });
     });
 
-    it('should compile optional mixed primitive union properties', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should compile optional mixed primitive union properties', async () => {
+      const schema = await compileSource(`
         interface Person {
           value?: string | number;
         }
         type T = Person;
       `);
-      const schema = compile(type, typeChecker);
       expect(schema).toEqual({
         type: 'object',
         properties: {
@@ -304,13 +285,12 @@ describe('ts-json-schema', () => {
   });
 
   describe('intersection types', () => {
-    it('should merge two object types', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should merge two object types', async () => {
+      const schema = await compileSource(`
         interface A { name: string; }
         interface B { age: number; }
         type T = A & B;
       `);
-      const schema = compile(type, typeChecker);
       expect(schema).toEqual({
         type: 'object',
         properties: {
@@ -321,13 +301,12 @@ describe('ts-json-schema', () => {
       });
     });
 
-    it('should merge object with optional properties', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should merge object with optional properties', async () => {
+      const schema = await compileSource(`
         interface A { name: string; }
         interface B { age?: number; }
         type T = A & B;
       `);
-      const schema = compile(type, typeChecker);
       expect(schema).toEqual({
         type: 'object',
         properties: {
@@ -338,89 +317,100 @@ describe('ts-json-schema', () => {
       });
     });
 
-    it('should use allOf for mixed intersections', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should use allOf for mixed intersections', async () => {
+      const schema = await compileSource(`
         type T = { name: string } & string[];
       `);
-      const schema = compile(type, typeChecker);
       expect(schema.allOf).toBeDefined();
       expect(schema.allOf).toHaveLength(2);
     });
   });
 
   describe('JSDoc tags', () => {
-    it('should apply description from JSDoc', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should apply description from JSDoc', async () => {
+      const schema = await compileSource(`
         interface Test {
           /** This is a string */
           prop: string;
         }
         type T = Test;
       `);
-      const schema = compile(type, typeChecker);
       expect(schema.properties?.prop?.description).toBe('This is a string');
     });
 
-    it('should apply minimum tag', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should apply minimum tag', async () => {
+      const schema = await compileSource(`
         interface Test {
           /** @minimum 10 */
           prop: number;
         }
         type T = Test;
       `);
-      const schema = compile(type, typeChecker);
       expect(schema.properties?.prop?.minimum).toBe(10);
     });
 
-    it('should apply minLength tag', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should apply minLength tag', async () => {
+      const schema = await compileSource(`
         interface Test {
           /** @minLength 5 */
           prop: string;
         }
         type T = Test;
       `);
-      const schema = compile(type, typeChecker);
       expect(schema.properties?.prop?.minLength).toBe(5);
     });
 
-    it('should not apply minimum tag to string type', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should not apply minimum tag to string type', async () => {
+      const schema = await compileSource(`
         interface Test {
           /** @minimum 10 */
           prop: string;
         }
         type T = Test;
       `);
-      const schema = compile(type, typeChecker);
       expect(schema.properties?.prop).toEqual({ type: 'string' });
     });
 
-    it('should not apply minLength tag to number type', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should not apply minLength tag to number type', async () => {
+      const schema = await compileSource(`
         interface Test {
           /** @minLength 5 */
           prop: number;
         }
         type T = Test;
       `);
-      const schema = compile(type, typeChecker);
       expect(schema.properties?.prop).toEqual({ type: 'number' });
     });
 
-    it('should apply unknown tags as x- extensions', () => {
-      const { typeChecker, type } = createProgramAndTypeChecker(`
+    it('should apply unknown tags as x- extensions', async () => {
+      const schema = await compileSource(`
         interface Test {
           /** @customTag value */
           prop: string;
         }
         type T = Test;
       `);
-      const schema = compile(type, typeChecker);
       expect(schema.properties?.prop).toEqual({
         type: 'string',
         'x-custom-tag': 'value',
+      });
+    });
+
+    it('should emit prototype-named tags as x- extensions', async () => {
+      const schema = await compileSource(`
+        interface Test {
+          /**
+           * @constructor value
+           * @toString text
+           */
+          prop: string;
+        }
+        type T = Test;
+      `);
+      expect(schema.properties?.prop).toEqual({
+        type: 'string',
+        'x-constructor': 'value',
+        'x-to-string': 'text',
       });
     });
   });

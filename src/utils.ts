@@ -1,26 +1,24 @@
-import ts from 'typescript';
+import type { Checker, Symbol } from 'typescript/async';
 import type { JSONSchema } from './types';
 
 /**
- * Extract JSDoc tags from a TypeScript symbol
+ * Extract JSDoc tags from a TypeScript symbol.
+ * Tag text is the rendered string from the TS 7.1 checker, not display parts.
  */
-export function extractJSDocTags(
-  symbol: ts.Symbol | undefined,
-  typeChecker: ts.TypeChecker
-): Map<string, string> {
+export async function extractJSDocTags(
+  symbol: Symbol | undefined,
+  typeChecker: Checker
+): Promise<Map<string, string>> {
   const tags = new Map<string, string>();
 
   if (!symbol) {
     return tags;
   }
 
-  // Get JSDoc tags from the symbol
-  const jsDocTags = symbol.getJsDocTags(typeChecker);
+  const jsDocTags = await symbol.getJsDocTags(typeChecker);
 
   for (const tag of jsDocTags) {
-    const tagName = tag.name;
-    const tagText = tag.text?.map((part) => part.text).join('') || '';
-    tags.set(tagName, tagText);
+    tags.set(tag.name, tag.text ?? '');
   }
 
   return tags;
@@ -29,17 +27,17 @@ export function extractJSDocTags(
 /**
  * Get description from JSDoc comment
  */
-export function getDescription(
-  symbol: ts.Symbol | undefined,
-  typeChecker: ts.TypeChecker
-): string | undefined {
+export async function getDescription(
+  symbol: Symbol | undefined,
+  typeChecker: Checker
+): Promise<string | undefined> {
   if (!symbol) {
     return undefined;
   }
 
-  const documentation = symbol.getDocumentationComment(typeChecker);
+  const documentation = await symbol.getDocumentationComment(typeChecker);
   if (documentation.length > 0) {
-    return documentation.map((part) => part.text).join('');
+    return documentation;
   }
 
   return undefined;
@@ -162,24 +160,23 @@ export function applyJSDocTags(
     }
   }
 
-  // Known tags set
-  const knownTags = new Set([
-    'minimum',
-    'maximum',
-    'multipleOf',
-    'integer',
-    'minLength',
-    'maxLength',
-    'pattern',
-    'format',
-    'minItems',
-    'maxItems',
-    'default',
-  ]);
+  const knownTags: Record<string, true> = {
+    minimum: true,
+    maximum: true,
+    multipleOf: true,
+    integer: true,
+    minLength: true,
+    maxLength: true,
+    pattern: true,
+    format: true,
+    minItems: true,
+    maxItems: true,
+    default: true,
+  };
 
   // Apply unknown tags as x- extensions
   for (const [tagName, tagText] of tags) {
-    if (!knownTags.has(tagName)) {
+    if (!Object.hasOwn(knownTags, tagName)) {
       const kebabTagName = camelToKebab(tagName);
       try {
         schema[`x-${kebabTagName}`] = JSON.parse(tagText);
